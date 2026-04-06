@@ -12,6 +12,7 @@ tracing = { workspace = true }
 tauri = { version = "2", features = [] }
 dirs = "6"
 device_query = "2"
+keyring = "3"
 core-types = { path = "../../../crates/core-types" }
 core-obs = { path = "../../../crates/core-obs" }
 core-capture = { path = "../../../crates/core-capture" }

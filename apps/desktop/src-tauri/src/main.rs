@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod config;
+mod hotkey;
 mod protection;
 
 use std::{
@@ -10,6 +11,7 @@ use std::{
 
 use core_obs::{LocalObsController, WebSocketObsTransport};
 use core_types::{AppConfig, ObsController, PanicBehavior, ProtectionMode, RedactionStyle};
+use hotkey::HotkeySpec;
 use protection::{ProtectionService, ProtectionStatusSnapshot};
 use serde::Serialize;
 use tauri::State;
@@ -28,6 +30,12 @@ struct DashboardSnapshot {
     mode: String,
     scan_interval_ms: u64,
     panic_hotkey: String,
+    obs_enabled: bool,
+    obs_host: String,
+    obs_port: u16,
+    obs_safe_scene: String,
+    obs_lock_safe_scene_until_clear: bool,
+    obs_has_password: bool,
     ocr_backend_status: String,
     obs_status: String,
     panic_active: bool,
@@ -62,6 +70,12 @@ fn get_dashboard_snapshot(state: State<'_, AppState>) -> Result<DashboardSnapsho
         mode: format!("{:?}", cfg.mode),
         scan_interval_ms: cfg.scan_interval_ms,
         panic_hotkey: cfg.panic_hotkey,
+        obs_enabled: cfg.obs.enabled,
+        obs_host: cfg.obs.host,
+        obs_port: cfg.obs.port,
+        obs_safe_scene: cfg.obs.safe_scene,
+        obs_lock_safe_scene_until_clear: cfg.obs.lock_safe_scene_until_clear,
+        obs_has_password: cfg.obs.password.is_some(),
         ocr_backend_status: if runtime.ocr_ready {
             "Local OCR backend available".to_string()
         } else {
@@ -132,9 +146,7 @@ fn update_scan_interval(state: State<'_, AppState>, interval_ms: u64) -> Result<
 
 #[tauri::command]
 fn update_panic_hotkey(state: State<'_, AppState>, hotkey: String) -> Result<(), String> {
-    if !hotkey.contains('+') {
-        return Err("panic hotkey should include at least one modifier (example: Ctrl+Shift+Pause)".to_string());
-    }
+    HotkeySpec::parse(&hotkey).map_err(|e| format!("invalid panic hotkey: {e}"))?;
     let mut cfg = state.config.lock().map_err(|_| "config lock failed")?;
     cfg.panic_hotkey = hotkey;
     config::save(&state.config_path, &cfg).map_err(|e| e.to_string())
@@ -178,7 +190,14 @@ fn update_obs_settings(
     cfg.obs.enabled = enabled;
     cfg.obs.host = host;
     cfg.obs.port = port;
-    cfg.obs.password = password;
+
+    let password = password.map(|v| v.trim().to_string());
+    cfg.obs.password = match password {
+        Some(v) if !v.is_empty() => Some(v),
+        Some(_) => Some(String::new()),
+        None => cfg.obs.password.clone(),
+    };
+
     cfg.obs.safe_scene = safe_scene;
     cfg.obs.lock_safe_scene_until_clear = lock_safe_scene_until_clear;
     config::save(&state.config_path, &cfg).map_err(|e| e.to_string())

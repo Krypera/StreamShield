@@ -14,9 +14,11 @@ use core_ocr::LocalOcrEngine;
 use core_policy::DefaultPolicyEngine;
 use core_redact::OverlayRedactionRenderer;
 use core_runtime::{PipelineRuntime, RuntimeScanOutcome};
-use core_types::{AppConfig, ConfidenceLevel, PanicBehavior};
-use device_query::{DeviceQuery, DeviceState, Keycode};
+use core_types::{AppConfig, ConfidenceLevel};
+use device_query::{DeviceQuery, DeviceState};
 use serde::Serialize;
+
+use crate::hotkey::{panic_behavior_label, HotkeySpec};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProtectionStatusSnapshot {
@@ -80,110 +82,10 @@ impl ProtectionStatus {
     }
 }
 
-#[derive(Debug, Clone)]
-struct HotkeySpec {
-    require_ctrl: bool,
-    require_shift: bool,
-    require_alt: bool,
-    primary: Keycode,
-}
-
-impl HotkeySpec {
-    fn parse(raw: &str) -> Option<Self> {
-        let mut require_ctrl = false;
-        let mut require_shift = false;
-        let mut require_alt = false;
-        let mut primary: Option<Keycode> = None;
-
-        for part in raw.split('+').map(|p| p.trim().to_ascii_lowercase()) {
-            match part.as_str() {
-                "ctrl" | "control" => require_ctrl = true,
-                "shift" => require_shift = true,
-                "alt" => require_alt = true,
-                other => {
-                    primary = parse_keycode(other);
-                }
-            }
-        }
-
-        Some(Self {
-            require_ctrl,
-            require_shift,
-            require_alt,
-            primary: primary?,
-        })
-    }
-
-    fn is_pressed(&self, keys: &[Keycode]) -> bool {
-        if self.require_ctrl
-            && !(keys.contains(&Keycode::LControl) || keys.contains(&Keycode::RControl))
-        {
-            return false;
-        }
-        if self.require_shift && !(keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift))
-        {
-            return false;
-        }
-        if self.require_alt && !(keys.contains(&Keycode::LAlt) || keys.contains(&Keycode::RAlt)) {
-            return false;
-        }
-        keys.contains(&self.primary)
-    }
-}
-
-fn parse_keycode(token: &str) -> Option<Keycode> {
-    match token {
-        "pause" => Some(Keycode::Pause),
-        "f1" => Some(Keycode::F1),
-        "f2" => Some(Keycode::F2),
-        "f3" => Some(Keycode::F3),
-        "f4" => Some(Keycode::F4),
-        "f5" => Some(Keycode::F5),
-        "f6" => Some(Keycode::F6),
-        "f7" => Some(Keycode::F7),
-        "f8" => Some(Keycode::F8),
-        "f9" => Some(Keycode::F9),
-        "f10" => Some(Keycode::F10),
-        "f11" => Some(Keycode::F11),
-        "f12" => Some(Keycode::F12),
-        "0" => Some(Keycode::Key0),
-        "1" => Some(Keycode::Key1),
-        "2" => Some(Keycode::Key2),
-        "3" => Some(Keycode::Key3),
-        "4" => Some(Keycode::Key4),
-        "5" => Some(Keycode::Key5),
-        "6" => Some(Keycode::Key6),
-        "7" => Some(Keycode::Key7),
-        "8" => Some(Keycode::Key8),
-        "9" => Some(Keycode::Key9),
-        "a" => Some(Keycode::A),
-        "b" => Some(Keycode::B),
-        "c" => Some(Keycode::C),
-        "d" => Some(Keycode::D),
-        "e" => Some(Keycode::E),
-        "f" => Some(Keycode::F),
-        "g" => Some(Keycode::G),
-        "h" => Some(Keycode::H),
-        "i" => Some(Keycode::I),
-        "j" => Some(Keycode::J),
-        "k" => Some(Keycode::K),
-        "l" => Some(Keycode::L),
-        "m" => Some(Keycode::M),
-        "n" => Some(Keycode::N),
-        "o" => Some(Keycode::O),
-        "p" => Some(Keycode::P),
-        "q" => Some(Keycode::Q),
-        "r" => Some(Keycode::R),
-        "s" => Some(Keycode::S),
-        "t" => Some(Keycode::T),
-        "u" => Some(Keycode::U),
-        "v" => Some(Keycode::V),
-        "w" => Some(Keycode::W),
-        "x" => Some(Keycode::X),
-        "y" => Some(Keycode::Y),
-        "z" => Some(Keycode::Z),
-        _ => None,
-    }
+#[derive(Default)]
+struct EventThrottle {
+    last_event: Option<String>,
+    last_event_ts_ms: u64,
 }
 
 pub struct ProtectionService {
@@ -244,7 +146,6 @@ impl ProtectionService {
                 let detector = WalletSecretDetector;
                 let policy = DefaultPolicyEngine;
                 let renderer = OverlayRedactionRenderer::default();
-
                 let obs_controller = create_obs_controller();
 
                 let ocr = match LocalOcrEngine::new_tesseract(None, "eng") {
@@ -278,6 +179,7 @@ impl ProtectionService {
 
                 let keyboard = DeviceState::new();
                 let mut hotkey_was_down = false;
+                let mut throttle = EventThrottle::default();
 
                 while !stop_clone.load(Ordering::Relaxed) {
                     if clear_clone.swap(false, Ordering::Relaxed) {
@@ -285,7 +187,12 @@ impl ProtectionService {
                             if let Ok(mut panic_state) = panic_active.lock() {
                                 *panic_state = false;
                             }
-                            push_event(&recent_events, "Panic latch cleared");
+                            push_event_throttled(
+                                &recent_events,
+                                &mut throttle,
+                                "Panic latch cleared",
+                                500,
+                            );
                         }
                     }
 
@@ -297,12 +204,14 @@ impl ProtectionService {
                                 if let Ok(mut panic_state) = panic_active.lock() {
                                     *panic_state = true;
                                 }
-                                push_event(
+                                push_event_throttled(
                                     &recent_events,
+                                    &mut throttle,
                                     &format!(
                                         "Manual panic requested ({})",
                                         panic_behavior_label(cfg.panic_behavior)
                                     ),
+                                    500,
                                 );
                             }
                             Err(err) => {
@@ -313,7 +222,7 @@ impl ProtectionService {
                         }
                     }
 
-                    if let Some(hotkey) = HotkeySpec::parse(&cfg.panic_hotkey) {
+                    if let Ok(hotkey) = HotkeySpec::parse(&cfg.panic_hotkey) {
                         let keys = keyboard.get_keys();
                         let hotkey_pressed = hotkey.is_pressed(&keys);
                         if hotkey_pressed && !hotkey_was_down {
@@ -325,12 +234,14 @@ impl ProtectionService {
                                     if let Ok(mut s) = status.lock() {
                                         s.hotkey_triggers = s.hotkey_triggers.saturating_add(1);
                                     }
-                                    push_event(
+                                    push_event_throttled(
                                         &recent_events,
+                                        &mut throttle,
                                         &format!(
                                             "Manual panic hotkey triggered ({})",
                                             panic_behavior_label(cfg.panic_behavior)
                                         ),
+                                        500,
                                     );
                                 }
                                 Err(err) => {
@@ -350,31 +261,45 @@ impl ProtectionService {
                         Ok(outcome) => {
                             update_status_success(&status, now_ms, &outcome);
                             if outcome.findings_count > 0 {
-                                push_event(
+                                push_event_throttled(
                                     &recent_events,
+                                    &mut throttle,
                                     &format!(
                                         "Risk finding(s): count={}, confidence={:?}",
                                         outcome.findings_count, outcome.max_confidence
                                     ),
+                                    1200,
                                 );
                             }
                             if outcome.redaction_target_count > 0 {
-                                push_event(
+                                push_event_throttled(
                                     &recent_events,
+                                    &mut throttle,
                                     &format!(
                                         "Region redaction active for {} target(s)",
                                         outcome.redaction_target_count
                                     ),
+                                    1200,
                                 );
                             }
                             if outcome.panic_latched {
                                 if let Ok(mut panic_state) = panic_active.lock() {
                                     *panic_state = true;
                                 }
-                                push_event(&recent_events, "Panic shield latched due to critical risk");
+                                push_event_throttled(
+                                    &recent_events,
+                                    &mut throttle,
+                                    "Panic shield latched due to critical risk",
+                                    1200,
+                                );
                             }
                             if outcome.obs_locked {
-                                push_event(&recent_events, "OBS safe scene lock is active");
+                                push_event_throttled(
+                                    &recent_events,
+                                    &mut throttle,
+                                    "OBS safe scene lock is active",
+                                    1500,
+                                );
                             }
                         }
                         Err(err) => {
@@ -382,7 +307,12 @@ impl ProtectionService {
                                 s.last_error = Some(format!("Protection scan error: {err}"));
                                 s.last_scan_timestamp_ms = Some(now_ms);
                             }
-                            push_event(&recent_events, "Protection loop encountered a scan error");
+                            push_event_throttled(
+                                &recent_events,
+                                &mut throttle,
+                                "Protection loop encountered a scan error",
+                                1500,
+                            );
                         }
                     }
 
@@ -445,14 +375,6 @@ fn create_obs_controller() -> LocalObsController {
     }
 }
 
-fn panic_behavior_label(v: PanicBehavior) -> &'static str {
-    match v {
-        PanicBehavior::ShieldOnly => "shield-only",
-        PanicBehavior::ObsOnly => "obs-only",
-        PanicBehavior::ShieldAndObs => "shield-and-obs",
-    }
-}
-
 fn current_epoch_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -481,23 +403,19 @@ fn push_event(recent_events: &Arc<Mutex<Vec<String>>>, event: &str) {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{HotkeySpec, Keycode};
-
-    #[test]
-    fn parses_default_panic_hotkey() {
-        let parsed = HotkeySpec::parse("Ctrl+Shift+Pause").expect("hotkey should parse");
-        assert!(parsed.require_ctrl);
-        assert!(parsed.require_shift);
-        assert_eq!(parsed.primary, Keycode::Pause);
+fn push_event_throttled(
+    recent_events: &Arc<Mutex<Vec<String>>>,
+    throttle: &mut EventThrottle,
+    event: &str,
+    min_interval_ms: u64,
+) {
+    let now = current_epoch_ms();
+    let same_as_last = throttle.last_event.as_deref() == Some(event);
+    if same_as_last && now.saturating_sub(throttle.last_event_ts_ms) < min_interval_ms {
+        return;
     }
 
-    #[test]
-    fn hotkey_matching_requires_modifiers() {
-        let parsed = HotkeySpec::parse("Ctrl+Shift+K").expect("hotkey should parse");
-        assert!(!parsed.is_pressed(&[Keycode::K]));
-        assert!(!parsed.is_pressed(&[Keycode::LControl, Keycode::K]));
-        assert!(parsed.is_pressed(&[Keycode::LControl, Keycode::LShift, Keycode::K]));
-    }
+    throttle.last_event = Some(event.to_string());
+    throttle.last_event_ts_ms = now;
+    push_event(recent_events, event);
 }

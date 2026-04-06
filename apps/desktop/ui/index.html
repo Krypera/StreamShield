@@ -77,6 +77,14 @@
         color: var(--warn);
         font-size: 13px;
       }
+      .inline {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .inline input[type="checkbox"] {
+        width: auto;
+      }
     </style>
   </head>
   <body>
@@ -89,7 +97,7 @@
           <div id="dashboard" class="status"></div>
           <button class="primary" onclick="startProtectionLoop()">Start Protection Loop</button>
           <button onclick="stopProtectionLoop()">Stop Protection Loop</button>
-          <label>
+          <label class="inline">
             <input id="protectionEnabled" type="checkbox" checked onchange="setProtectionEnabled()" />
             Protection Enabled
           </label>
@@ -138,12 +146,16 @@
 
         <section>
           <h2>OBS Settings</h2>
+          <label class="inline"><input id="obsEnabled" type="checkbox" /> Enable OBS integration</label>
           <label>Host</label>
           <input id="obsHost" value="127.0.0.1" />
           <label>Port</label>
           <input id="obsPort" type="number" value="4455" />
           <label>Safe Scene</label>
           <input id="obsScene" value="SAFE" />
+          <label>Password (leave blank to keep current)</label>
+          <input id="obsPassword" type="password" value="" />
+          <label class="inline"><input id="obsLock" type="checkbox" checked /> Lock safe scene until alert clear</label>
           <button onclick="saveObsSettings()">Save OBS Settings</button>
           <button class="primary" onclick="testObs()">Test OBS Connection</button>
         </section>
@@ -176,6 +188,13 @@
         document.getElementById("mode").value = snapshot.mode;
         document.getElementById("protectionEnabled").checked = snapshot.protection_enabled;
         document.getElementById("panicHotkey").value = snapshot.panic_hotkey;
+
+        document.getElementById("obsEnabled").checked = snapshot.obs_enabled;
+        document.getElementById("obsHost").value = snapshot.obs_host;
+        document.getElementById("obsPort").value = snapshot.obs_port;
+        document.getElementById("obsScene").value = snapshot.obs_safe_scene;
+        document.getElementById("obsLock").checked = snapshot.obs_lock_safe_scene_until_clear;
+        document.getElementById("obsPassword").placeholder = snapshot.obs_has_password ? "Stored securely" : "Not set";
 
         const rt = snapshot.protection_runtime;
         const container = document.getElementById("dashboard");
@@ -236,14 +255,16 @@
       }
 
       async function saveObsSettings() {
+        const rawPass = document.getElementById("obsPassword").value;
         await call("update_obs_settings", {
-          enabled: true,
+          enabled: document.getElementById("obsEnabled").checked,
           host: document.getElementById("obsHost").value,
           port: Number(document.getElementById("obsPort").value),
-          password: null,
+          password: rawPass.length > 0 ? rawPass : null,
           safe_scene: document.getElementById("obsScene").value,
-          lock_safe_scene_until_clear: true,
+          lock_safe_scene_until_clear: document.getElementById("obsLock").checked,
         });
+        document.getElementById("obsPassword").value = "";
       }
 
       async function testObs() {

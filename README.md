@@ -114,7 +114,7 @@ The detector combines multiple signals instead of keyword-only matching.
 
 1. Mnemonic phrase signals
 - 12/18/24-word candidate patterns
-- overlap with synthetic BIP39-style wordlist entries
+- overlap with full BIP39 English wordlist
 - grouped word layout signal
 - numbered list signal
 - contextual wallet warning signal
@@ -202,6 +202,11 @@ Config is local-only and typed (`AppConfig`). Desktop shell stores config under 
 - Windows expected path pattern: `%APPDATA%/StreamShield/config.json`
 
 No cloud sync and no remote account model.
+
+OBS password handling:
+
+- OBS password is not persisted as plain text in `config.json`.
+- Desktop shell stores OBS password through OS secure credential storage (`keyring` integration).
 
 ## Logging and Diagnostics
 
@@ -291,6 +296,7 @@ All examples and fixtures are synthetic and invalid; no real wallet secrets are 
 - No wallet-specific CV model in MVP.
 - No multi-monitor support in MVP.
 - The desktop shell is functional but still not a production-hardened UX or installer experience.
+- Global hotkey uses polling-based keyboard detection in MVP; an OS-native registration path is planned.
 
 ## Roadmap
 
