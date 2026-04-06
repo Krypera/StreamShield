@@ -1,7 +1,7 @@
 use anyhow::Result;
 use core_types::{
     AppConfig, ConfidenceLevel, DetectionContext, Detector, FrameSource, ObsController, OcrEngine,
-    PolicyEngine, RedactionRenderer, ResponseAction,
+    PanicBehavior, PolicyEngine, RedactionRenderer, ResponseAction,
 };
 
 #[derive(Debug, Clone)]
@@ -12,6 +12,7 @@ pub struct RuntimeScanOutcome {
     pub redaction_target_count: usize,
     pub panic_latched: bool,
     pub obs_switch_requested: bool,
+    pub obs_locked: bool,
     pub rationale: String,
 }
 
@@ -31,6 +32,7 @@ where
     renderer: R,
     obs: Obs,
     panic_latched: bool,
+    obs_locked: bool,
 }
 
 impl<F, O, D, P, R, Obs> PipelineRuntime<F, O, D, P, R, Obs>
@@ -58,6 +60,7 @@ where
             renderer,
             obs,
             panic_latched: false,
+            obs_locked: false,
         }
     }
 
@@ -65,9 +68,44 @@ where
         self.panic_latched
     }
 
+    pub fn obs_locked(&self) -> bool {
+        self.obs_locked
+    }
+
     pub fn clear_alert_latch(&mut self) -> Result<()> {
         self.panic_latched = false;
+        self.obs_locked = false;
         self.renderer.set_fullscreen_shield(false)?;
+        self.renderer.set_targets(Vec::new())?;
+        Ok(())
+    }
+
+    pub fn trigger_manual_panic(&mut self, config: &AppConfig) -> Result<()> {
+        self.panic_latched = true;
+
+        match config.panic_behavior {
+            PanicBehavior::ShieldOnly => {
+                self.renderer.set_fullscreen_shield(true)?;
+            }
+            PanicBehavior::ObsOnly => {
+                if config.obs.enabled {
+                    self.obs.switch_to_safe_scene(&config.obs)?;
+                    if config.obs.lock_safe_scene_until_clear {
+                        self.obs_locked = true;
+                    }
+                }
+            }
+            PanicBehavior::ShieldAndObs => {
+                self.renderer.set_fullscreen_shield(true)?;
+                if config.obs.enabled {
+                    self.obs.switch_to_safe_scene(&config.obs)?;
+                    if config.obs.lock_safe_scene_until_clear {
+                        self.obs_locked = true;
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -84,6 +122,7 @@ where
                 redaction_target_count: 0,
                 panic_latched: self.panic_latched,
                 obs_switch_requested: false,
+                obs_locked: self.obs_locked,
                 rationale: "Protection disabled".to_string(),
             });
         }
@@ -118,8 +157,16 @@ where
                 ResponseAction::SwitchObsSafeScene => {
                     obs_switch_requested = true;
                     self.obs.switch_to_safe_scene(&config.obs)?;
+                    if config.obs.lock_safe_scene_until_clear {
+                        self.obs_locked = true;
+                    }
                 }
             }
+        }
+
+        if self.obs_locked && config.obs.enabled {
+            obs_switch_requested = true;
+            self.obs.switch_to_safe_scene(&config.obs)?;
         }
 
         if !redaction_applied {
@@ -137,6 +184,7 @@ where
             redaction_target_count,
             panic_latched: self.panic_latched,
             obs_switch_requested,
+            obs_locked: self.obs_locked,
             rationale: decision.rationale,
         })
     }
@@ -305,5 +353,29 @@ mod tests {
 
         runtime.clear_alert_latch().expect("clear latch should succeed");
         assert!(!runtime.panic_latched());
+        assert!(!runtime.obs_locked());
+    }
+
+    #[test]
+    fn manual_panic_respects_panic_behavior() {
+        let mut runtime = PipelineRuntime::new(
+            FakeFrameSource,
+            FakeOcr,
+            FakeDetector,
+            FakePolicy,
+            FakeRenderer::default(),
+            FakeObs::default(),
+        );
+
+        let mut cfg = AppConfig::default();
+        cfg.panic_behavior = core_types::PanicBehavior::ObsOnly;
+        cfg.obs.enabled = true;
+        cfg.obs.lock_safe_scene_until_clear = true;
+
+        runtime
+            .trigger_manual_panic(&cfg)
+            .expect("manual panic should succeed");
+        assert!(runtime.panic_latched());
+        assert!(runtime.obs_locked());
     }
 }
