@@ -1,0 +1,56 @@
+name: Feature Request
+description: Propose an improvement for StreamShield.
+title: "[Feature] "
+labels: ["type:feature", "status:needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What user problem does this solve?
+      placeholder: Describe the pain point and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      description: Describe the expected behavior and UX.
+      placeholder: Explain the proposed solution.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What alternatives did you evaluate?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - detect
+        - ocr
+        - runtime
+        - obs
+        - desktop-ui
+        - config
+        - docs
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Requested Priority
+      options:
+        - p1-high
+        - p2-medium
+        - p3-low
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy / Security Fit
+      options:
+        - label: This proposal keeps StreamShield local-first (no cloud OCR / telemetry requirement).
+          required: false
+        - label: This proposal does not require storing raw secrets.
+          required: false
+

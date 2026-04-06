@@ -1,0 +1,45 @@
+name: Security Hardening Task
+description: Track non-confidential security improvements and hardening work.
+title: "[Security] "
+labels: ["type:security", "status:needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report live or exploitable vulnerabilities here. Use private reporting:
+        https://github.com/Krypera/StreamShield/security/advisories/new
+  - type: textarea
+    id: scope
+    attributes:
+      label: Hardening Goal
+      description: What security posture improvement do you want?
+      placeholder: Example: tighten config secret handling, improve lock semantics, add regression tests.
+    validations:
+      required: true
+  - type: textarea
+    id: threat_model
+    attributes:
+      label: Threat Model Context
+      description: What attacker model / failure mode does this mitigate?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: How do we know this is done?
+      placeholder: Include tests, measurable behavior, and regressions to avoid.
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - p0-critical
+        - p1-high
+        - p2-medium
+        - p3-low
+    validations:
+      required: true
+

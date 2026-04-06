@@ -1,0 +1,6 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Confidential Security Report
+    url: https://github.com/Krypera/StreamShield/security/advisories/new
+    about: Report vulnerabilities privately using GitHub Security Advisories.
+

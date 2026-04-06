@@ -1,0 +1,75 @@
+name: Bug Report
+description: Report a reproducible problem in StreamShield.
+title: "[Bug] "
+labels: ["type:bug", "status:needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please avoid sharing real wallet secrets, private keys, or screenshots containing sensitive data.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is going wrong?
+      placeholder: Short description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps To Reproduce
+      description: Include exact steps and expected vs actual behavior.
+      placeholder: |
+        1. Open StreamShield
+        2. Start protection loop
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, StreamShield version/commit, OCR backend, OBS version.
+      placeholder: |
+        OS: Windows 11
+        StreamShield commit: <sha>
+        OCR: tesseract-offline
+        OBS: 31.x
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - detect
+        - ocr
+        - runtime
+        - obs
+        - desktop-ui
+        - config
+        - tests
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - p0-critical
+        - p1-high
+        - p2-medium
+        - p3-low
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety Checks
+      options:
+        - label: I did not include real seeds/private keys/raw secrets in this issue.
+          required: true
+        - label: I confirmed this is reproducible on the latest main branch.
+          required: false
+

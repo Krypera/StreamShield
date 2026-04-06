@@ -1,0 +1,88 @@
+- name: "type:bug"
+  color: "d73a4a"
+  description: "Fixing a defect or regression."
+
+- name: "type:feature"
+  color: "0e8a16"
+  description: "New user-facing capability."
+
+- name: "type:security"
+  color: "b60205"
+  description: "Security issue or hardening work."
+
+- name: "type:performance"
+  color: "fbca04"
+  description: "Performance improvements."
+
+- name: "type:docs"
+  color: "0075ca"
+  description: "Documentation changes."
+
+- name: "type:test"
+  color: "5319e7"
+  description: "Test-only changes."
+
+- name: "type:refactor"
+  color: "1d76db"
+  description: "Code restructuring without behavior change."
+
+- name: "area:detect"
+  color: "f9d0c4"
+  description: "Detection heuristics and scoring."
+
+- name: "area:ocr"
+  color: "fef2c0"
+  description: "OCR pipeline and parsing."
+
+- name: "area:runtime"
+  color: "c5def5"
+  description: "Runtime orchestration and loop behavior."
+
+- name: "area:obs"
+  color: "d4c5f9"
+  description: "OBS integration and safe-scene control."
+
+- name: "area:desktop"
+  color: "bfd4f2"
+  description: "Desktop/Tauri shell and UI."
+
+- name: "area:config"
+  color: "e4e669"
+  description: "Configuration persistence and settings."
+
+- name: "area:docs"
+  color: "c2e0c6"
+  description: "README and developer docs."
+
+- name: "priority:p0"
+  color: "b60205"
+  description: "Critical, immediate attention."
+
+- name: "priority:p1"
+  color: "d93f0b"
+  description: "High priority."
+
+- name: "priority:p2"
+  color: "fbca04"
+  description: "Medium priority."
+
+- name: "priority:p3"
+  color: "0e8a16"
+  description: "Low priority."
+
+- name: "status:needs-triage"
+  color: "ededed"
+  description: "Awaiting first triage."
+
+- name: "status:blocked"
+  color: "000000"
+  description: "Blocked by dependency or decision."
+
+- name: "good first issue"
+  color: "7057ff"
+  description: "Good for first-time contributors."
+
+- name: "help wanted"
+  color: "008672"
+  description: "Maintainers welcome external help."
+
