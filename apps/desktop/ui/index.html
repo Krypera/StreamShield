@@ -155,6 +155,7 @@
           <input id="obsScene" value="SAFE" />
           <label>Password (leave blank to keep current)</label>
           <input id="obsPassword" type="password" value="" />
+          <label class="inline"><input id="obsClearPassword" type="checkbox" /> Clear stored password</label>
           <label class="inline"><input id="obsLock" type="checkbox" checked /> Lock safe scene until alert clear</label>
           <button onclick="saveObsSettings()">Save OBS Settings</button>
           <button class="primary" onclick="testObs()">Test OBS Connection</button>
@@ -256,15 +257,20 @@
 
       async function saveObsSettings() {
         const rawPass = document.getElementById("obsPassword").value;
+        const clearPassword = document.getElementById("obsClearPassword").checked;
+
         await call("update_obs_settings", {
           enabled: document.getElementById("obsEnabled").checked,
           host: document.getElementById("obsHost").value,
           port: Number(document.getElementById("obsPort").value),
           password: rawPass.length > 0 ? rawPass : null,
+          clear_password: clearPassword,
           safe_scene: document.getElementById("obsScene").value,
           lock_safe_scene_until_clear: document.getElementById("obsLock").checked,
         });
+
         document.getElementById("obsPassword").value = "";
+        document.getElementById("obsClearPassword").checked = false;
       }
 
       async function testObs() {

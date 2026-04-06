@@ -4,6 +4,8 @@ use core_types::{
     PanicBehavior, PolicyEngine, RedactionRenderer, ResponseAction,
 };
 
+const OBS_LOCK_REASSERT_EVERY_SCANS: u32 = 5;
+
 #[derive(Debug, Clone)]
 pub struct RuntimeScanOutcome {
     pub findings_count: usize,
@@ -34,6 +36,7 @@ where
     panic_latched: bool,
     obs_locked: bool,
     obs_safe_scene_active: bool,
+    obs_reassert_counter: u32,
 }
 
 impl<F, O, D, P, R, Obs> PipelineRuntime<F, O, D, P, R, Obs>
@@ -63,6 +66,7 @@ where
             panic_latched: false,
             obs_locked: false,
             obs_safe_scene_active: false,
+            obs_reassert_counter: 0,
         }
     }
 
@@ -78,6 +82,7 @@ where
         self.panic_latched = false;
         self.obs_locked = false;
         self.obs_safe_scene_active = false;
+        self.obs_reassert_counter = 0;
         self.renderer.set_fullscreen_shield(false)?;
         self.renderer.set_targets(Vec::new())?;
         Ok(())
@@ -95,6 +100,7 @@ where
                     self.ensure_obs_safe_scene(config)?;
                     if config.obs.lock_safe_scene_until_clear {
                         self.obs_locked = true;
+                        self.obs_reassert_counter = 0;
                     }
                 }
             }
@@ -104,6 +110,7 @@ where
                     self.ensure_obs_safe_scene(config)?;
                     if config.obs.lock_safe_scene_until_clear {
                         self.obs_locked = true;
+                        self.obs_reassert_counter = 0;
                     }
                 }
             }
@@ -162,10 +169,24 @@ where
                     self.ensure_obs_safe_scene(config)?;
                     if config.obs.lock_safe_scene_until_clear {
                         self.obs_locked = true;
+                        self.obs_reassert_counter = 0;
                     }
                 }
             }
         }
+
+        if self.obs_locked && config.obs.enabled {
+            self.obs_reassert_counter = self.obs_reassert_counter.saturating_add(1);
+            if self.obs_reassert_counter >= OBS_LOCK_REASSERT_EVERY_SCANS {
+                self.obs.switch_to_safe_scene(&config.obs)?;
+                self.obs_reassert_counter = 0;
+                obs_switch_requested = true;
+                self.obs_safe_scene_active = true;
+            }
+        } else {
+            self.obs_reassert_counter = 0;
+        }
+
         if !self.obs_locked && !obs_switch_requested {
             self.obs_safe_scene_active = false;
         }
@@ -202,6 +223,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
     use anyhow::Result;
     use core_types::{
         AppConfig, BoundingBox, CapturedFrame, ConfidenceLevel, DetectionFinding, Detector,
@@ -313,9 +336,8 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
     struct FakeObs {
-        switches: usize,
+        switches: Arc<Mutex<usize>>,
     }
 
     impl ObsController for FakeObs {
@@ -324,7 +346,9 @@ mod tests {
         }
 
         fn switch_to_safe_scene(&mut self, _config: &ObsConfig) -> Result<()> {
-            self.switches += 1;
+            if let Ok(mut count) = self.switches.lock() {
+                *count += 1;
+            }
             Ok(())
         }
     }
@@ -337,7 +361,9 @@ mod tests {
             FakeDetector,
             FakePolicy,
             FakeRenderer::default(),
-            FakeObs::default(),
+            FakeObs {
+                switches: Arc::new(Mutex::new(0)),
+            },
         );
 
         let outcome = runtime.scan_once(&AppConfig::default()).expect("scan should succeed");
@@ -355,7 +381,9 @@ mod tests {
             FakeDetector,
             FakePolicy,
             FakeRenderer::default(),
-            FakeObs::default(),
+            FakeObs {
+                switches: Arc::new(Mutex::new(0)),
+            },
         );
 
         let _ = runtime.scan_once(&AppConfig::default()).expect("scan should succeed");
@@ -374,7 +402,9 @@ mod tests {
             FakeDetector,
             FakePolicy,
             FakeRenderer::default(),
-            FakeObs::default(),
+            FakeObs {
+                switches: Arc::new(Mutex::new(0)),
+            },
         );
 
         let mut cfg = AppConfig::default();
@@ -387,5 +417,34 @@ mod tests {
             .expect("manual panic should succeed");
         assert!(runtime.panic_latched());
         assert!(runtime.obs_locked());
+    }
+
+    #[test]
+    fn obs_lock_reasserts_periodically() {
+        let switches = Arc::new(Mutex::new(0usize));
+        let mut runtime = PipelineRuntime::new(
+            FakeFrameSource,
+            FakeOcr,
+            FakeDetector,
+            FakePolicy,
+            FakeRenderer::default(),
+            FakeObs {
+                switches: Arc::clone(&switches),
+            },
+        );
+
+        let mut cfg = AppConfig::default();
+        cfg.obs.enabled = true;
+        cfg.obs.lock_safe_scene_until_clear = true;
+
+        let _ = runtime.scan_once(&cfg).expect("initial scan");
+        let before = *switches.lock().expect("switches lock");
+
+        for _ in 0..6 {
+            let _ = runtime.scan_once(&cfg).expect("follow-up scan");
+        }
+
+        let after = *switches.lock().expect("switches lock");
+        assert!(after > before);
     }
 }

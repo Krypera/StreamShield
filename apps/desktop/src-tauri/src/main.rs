@@ -183,6 +183,7 @@ fn update_obs_settings(
     host: String,
     port: u16,
     password: Option<String>,
+    clear_password: bool,
     safe_scene: String,
     lock_safe_scene_until_clear: bool,
 ) -> Result<(), String> {
@@ -192,10 +193,13 @@ fn update_obs_settings(
     cfg.obs.port = port;
 
     let password = password.map(|v| v.trim().to_string());
-    cfg.obs.password = match password {
-        Some(v) if !v.is_empty() => Some(v),
-        Some(_) => Some(String::new()),
-        None => cfg.obs.password.clone(),
+    cfg.obs.password = if clear_password {
+        None
+    } else {
+        match password {
+            Some(v) if !v.is_empty() => Some(v),
+            _ => cfg.obs.password.clone(),
+        }
     };
 
     cfg.obs.safe_scene = safe_scene;
