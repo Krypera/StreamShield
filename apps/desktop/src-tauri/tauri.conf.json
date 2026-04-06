@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "StreamShield",
+  "version": "0.1.0",
+  "identifier": "com.streamshield.app",
+  "build": {
+    "beforeDevCommand": "",
+    "beforeBuildCommand": "",
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "StreamShield",
+        "width": 1040,
+        "height": 740,
+        "resizable": true
+      }
+    ]
+  }
+}
