@@ -30,21 +30,79 @@ impl ObsTransport for StubTransport {
     }
 }
 
-pub struct LocalObsController<T: ObsTransport> {
-    transport: T,
+pub struct WebSocketObsTransport {
+    runtime: tokio::runtime::Runtime,
+    connected: Option<ObsConfig>,
+}
+
+impl WebSocketObsTransport {
+    pub fn new() -> Result<Self, ObsError> {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| ObsError::Other(format!("tokio runtime build failed: {e}")))?;
+        Ok(Self {
+            runtime,
+            connected: None,
+        })
+    }
+
+    fn connect_client(&self, config: &ObsConfig) -> Result<obws::Client, ObsError> {
+        self.runtime
+            .block_on(async {
+                obws::Client::connect(&config.host, config.port, config.password.as_deref()).await
+            })
+            .map_err(|e| map_obs_error(&e.to_string()))
+    }
+}
+
+impl ObsTransport for WebSocketObsTransport {
+    fn connect(&mut self, config: &ObsConfig) -> Result<(), ObsError> {
+        let _ = self.connect_client(config)?;
+        self.connected = Some(config.clone());
+        Ok(())
+    }
+
+    fn switch_scene(&mut self, scene_name: &str) -> Result<(), ObsError> {
+        let Some(config) = self.connected.clone() else {
+            return Err(ObsError::Other(
+                "not connected; call connect() before switch_scene()".to_string(),
+            ));
+        };
+
+        let client = self.connect_client(&config)?;
+        self.runtime
+            .block_on(async { client.scenes().set_current_program_scene(scene_name).await })
+            .map_err(|e| map_obs_error(&e.to_string()))
+    }
+}
+
+fn map_obs_error(msg: &str) -> ObsError {
+    let lower = msg.to_lowercase();
+    if lower.contains("auth") || lower.contains("password") {
+        ObsError::AuthFailed
+    } else if lower.contains("connect") || lower.contains("refused") || lower.contains("timeout") {
+        ObsError::Unavailable
+    } else {
+        ObsError::Other(msg.to_string())
+    }
+}
+
+pub struct LocalObsController {
+    transport: Box<dyn ObsTransport>,
     max_retries: u8,
 }
 
-impl<T: ObsTransport> LocalObsController<T> {
-    pub fn new(transport: T) -> Self {
+impl LocalObsController {
+    pub fn new<T: ObsTransport + 'static>(transport: T) -> Self {
         Self {
-            transport,
+            transport: Box::new(transport),
             max_retries: 2,
         }
     }
 }
 
-impl<T: ObsTransport> ObsController for LocalObsController<T> {
+impl ObsController for LocalObsController {
     fn test_connection(&mut self, config: &ObsConfig) -> anyhow::Result<()> {
         self.transport
             .connect(config)
