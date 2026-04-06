@@ -5,10 +5,14 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-tauri = { version = "2", features = [] }
+anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+tauri = { version = "2", features = [] }
+dirs = "6"
+core-types = { path = "../../../crates/core-types" }
+core-obs = { path = "../../../crates/core-obs" }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

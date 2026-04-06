@@ -4,8 +4,226 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StreamShield</title>
+    <style>
+      :root {
+        --bg: #f4f7f8;
+        --panel: #ffffff;
+        --line: #d9e1e5;
+        --text: #15232e;
+        --muted: #536572;
+        --accent: #0f766e;
+        --warn: #b45309;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", "Calibri", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 80% 0%, #d6ece8 0%, transparent 42%),
+          linear-gradient(180deg, #f7fafb, var(--bg));
+      }
+      main {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 28px 18px 30px;
+      }
+      h1 { margin: 0 0 12px; font-size: 30px; }
+      .subtitle { margin: 0 0 24px; color: var(--muted); }
+      .grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      }
+      section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px;
+      }
+      h2 { margin: 0 0 10px; font-size: 18px; }
+      label { display: block; font-size: 13px; margin: 8px 0 4px; color: var(--muted); }
+      input, select, button {
+        width: 100%;
+        border: 1px solid #bfd0d8;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font: inherit;
+      }
+      button {
+        margin-top: 10px;
+        background: #e7f5f3;
+        border-color: #a8d7cf;
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--accent);
+        border-color: #0b5f58;
+        color: white;
+      }
+      .status {
+        display: grid;
+        gap: 6px;
+        font-size: 14px;
+      }
+      .pill {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #e5eff6;
+      }
+      ul { margin: 8px 0 0; padding-left: 18px; }
+      .warning {
+        color: var(--warn);
+        font-size: 13px;
+      }
+    </style>
   </head>
   <body>
-    <div id="app">StreamShield UI shell</div>
+    <main>
+      <h1>StreamShield</h1>
+      <p class="subtitle">Local-first wallet secret leak prevention for streams, demos, and screen sharing.</p>
+      <div class="grid">
+        <section>
+          <h2>Protection Dashboard</h2>
+          <div id="dashboard" class="status"></div>
+          <div>
+            <label>Mode</label>
+            <select id="mode">
+              <option>Balanced</option>
+              <option>Strict</option>
+              <option>Paranoid</option>
+            </select>
+            <button class="primary" onclick="saveMode()">Apply Mode</button>
+          </div>
+        </section>
+
+        <section>
+          <h2>Detection Settings</h2>
+          <label>Scan Interval (ms)</label>
+          <input id="scanInterval" type="number" min="150" max="5000" value="400" />
+          <button onclick="saveScanInterval()">Save Interval</button>
+
+          <label>Redaction Style</label>
+          <select id="redactionStyle">
+            <option>BlackBox</option>
+            <option>Blur</option>
+            <option>Pixelate</option>
+          </select>
+          <button onclick="saveRedactionStyle()">Save Redaction Style</button>
+        </section>
+
+        <section>
+          <h2>Panic Controls</h2>
+          <label>Panic Behavior</label>
+          <select id="panicBehavior">
+            <option>ShieldAndObs</option>
+            <option>ShieldOnly</option>
+            <option>ObsOnly</option>
+          </select>
+          <button onclick="savePanicBehavior()">Save Panic Behavior</button>
+          <button class="primary" onclick="triggerPanic()">Trigger Panic</button>
+          <button onclick="clearPanic()">Clear Panic</button>
+        </section>
+
+        <section>
+          <h2>OBS Settings</h2>
+          <label>Host</label>
+          <input id="obsHost" value="127.0.0.1" />
+          <label>Port</label>
+          <input id="obsPort" type="number" value="4455" />
+          <label>Safe Scene</label>
+          <input id="obsScene" value="SAFE" />
+          <button onclick="saveObsSettings()">Save OBS Settings</button>
+          <button class="primary" onclick="testObs()">Test OBS Connection</button>
+        </section>
+
+        <section>
+          <h2>Privacy and Limitations</h2>
+          <p>All processing is local. No telemetry. No cloud OCR. No user accounts.</p>
+          <p class="warning">This tool reduces accidental leak risk but cannot guarantee perfect protection.</p>
+          <p class="warning">Use stream delay and a safe OBS scene for stronger protection.</p>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const invoke = window.__TAURI__?.core?.invoke;
+
+      async function call(command, args = {}) {
+        if (!invoke) {
+          console.warn("Tauri invoke unavailable in static preview mode");
+          return null;
+        }
+        return invoke(command, args);
+      }
+
+      async function refreshDashboard() {
+        const snapshot = await call("get_dashboard_snapshot");
+        if (!snapshot) return;
+
+        document.getElementById("scanInterval").value = snapshot.scan_interval_ms;
+        document.getElementById("mode").value = snapshot.mode;
+
+        const container = document.getElementById("dashboard");
+        container.innerHTML = `
+          <div><span class="pill">Protection: ${snapshot.protection_enabled ? "Enabled" : "Disabled"}</span></div>
+          <div><span class="pill">Mode: ${snapshot.mode}</span></div>
+          <div><span class="pill">OCR: ${snapshot.ocr_backend_status}</span></div>
+          <div><span class="pill">OBS: ${snapshot.obs_status}</span></div>
+          <div><span class="pill">Panic: ${snapshot.panic_active ? "Active" : "Idle"}</span></div>
+          <div>Recent events:</div>
+          <ul>${snapshot.recent_events.map((e) => `<li>${e}</li>`).join("")}</ul>
+        `;
+      }
+
+      async function saveMode() {
+        await call("update_mode", { mode: document.getElementById("mode").value });
+        refreshDashboard();
+      }
+
+      async function saveScanInterval() {
+        await call("update_scan_interval", { intervalMs: Number(document.getElementById("scanInterval").value) });
+        refreshDashboard();
+      }
+
+      async function saveRedactionStyle() {
+        await call("update_redaction_style", { style: document.getElementById("redactionStyle").value });
+      }
+
+      async function savePanicBehavior() {
+        await call("update_panic_behavior", { behavior: document.getElementById("panicBehavior").value });
+      }
+
+      async function saveObsSettings() {
+        await call("update_obs_settings", {
+          enabled: true,
+          host: document.getElementById("obsHost").value,
+          port: Number(document.getElementById("obsPort").value),
+          password: null,
+          safeScene: document.getElementById("obsScene").value,
+          lockSafeSceneUntilClear: true,
+        });
+      }
+
+      async function testObs() {
+        const result = await call("test_obs_connection");
+        if (result) alert(result);
+        refreshDashboard();
+      }
+
+      async function triggerPanic() {
+        await call("trigger_panic");
+        refreshDashboard();
+      }
+
+      async function clearPanic() {
+        await call("clear_panic");
+        refreshDashboard();
+      }
+
+      refreshDashboard();
+      setInterval(refreshDashboard, 2500);
+    </script>
   </body>
 </html>
