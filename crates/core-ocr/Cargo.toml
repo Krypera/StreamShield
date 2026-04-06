@@ -10,3 +10,5 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 core-types = { path = "../core-types" }
+image = "0.25"
+leptess = "0.14"

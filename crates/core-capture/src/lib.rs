@@ -1,37 +1,49 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use core_types::{CapturedFrame, FrameSource};
+use screenshots::Screen;
 
-pub struct WindowsPrimaryDisplaySource {
-    width: u32,
-    height: u32,
-}
+pub struct WindowsPrimaryDisplaySource;
 
 impl WindowsPrimaryDisplaySource {
-    pub fn new(width: u32, height: u32) -> Self {
-        Self { width, height }
+    pub fn new() -> Self {
+        Self
+    }
+
+    fn pick_primary_screen() -> Result<Screen> {
+        let screens = Screen::all().context("failed to enumerate screens")?;
+        if screens.is_empty() {
+            return Err(anyhow!("no display detected for capture"));
+        }
+
+        let primary = screens
+            .iter()
+            .find(|s| s.display_info.is_primary)
+            .copied()
+            .unwrap_or(screens[0]);
+
+        Ok(primary)
     }
 }
 
 impl Default for WindowsPrimaryDisplaySource {
     fn default() -> Self {
-        Self {
-            width: 1920,
-            height: 1080,
-        }
+        Self::new()
     }
 }
 
 impl FrameSource for WindowsPrimaryDisplaySource {
     fn capture_primary_display(&mut self) -> Result<CapturedFrame> {
         let ts = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
-        let rgba = vec![0_u8; (self.width * self.height * 4) as usize];
+        let screen = Self::pick_primary_screen()?;
+        let image = screen.capture().context("failed to capture primary display")?;
+
         Ok(CapturedFrame {
-            width: self.width,
-            height: self.height,
+            width: image.width(),
+            height: image.height(),
             timestamp_ms: ts,
-            rgba,
+            rgba: image.into_raw(),
         })
     }
 }
@@ -41,11 +53,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn captures_primary_display_frame_shape() {
-        let mut source = WindowsPrimaryDisplaySource::new(1280, 720);
-        let frame = source.capture_primary_display().expect("capture should succeed");
-        assert_eq!(frame.width, 1280);
-        assert_eq!(frame.height, 720);
-        assert_eq!(frame.rgba.len(), 1280 * 720 * 4);
+    fn source_initializes() {
+        let _ = WindowsPrimaryDisplaySource::new();
     }
 }
