@@ -1,33 +1,49 @@
 # StreamShield
 
-StreamShield is a local-first desktop leak prevention utility that detects and redacts wallet-secret material during livestreams, recordings, demos, and screen sharing before it spreads to viewers.
+StreamShield is a local-first desktop safety layer that helps reduce accidental wallet-secret leaks during livestreams, recordings, demos, and screen sharing.
+
+It scans the screen locally, runs offline OCR, scores risk with wallet-aware heuristics, and can react with redaction, panic shielding, and OBS safe-scene switching.
 
 License: **MIT** (see [LICENSE](./LICENSE)).
 
+## Project Status
+
+- Maturity: MVP (actively evolving)
+- Platform focus: Windows-first desktop workflows
+- Privacy model: local-only processing, no cloud backend
+- Product promise: risk reduction, not perfect prevention
+
 ## Why StreamShield Exists
 
-Wallet secrets can be exposed on-screen for only a few seconds and still cause catastrophic loss. StreamShield is designed to reduce accidental exposure risk for:
+Wallet secrets can appear on screen for only a few seconds and still cause catastrophic loss. StreamShield is designed as an emergency safety net for:
 
-- Mnemonic seed/recovery phrases
-- Grouped backup words (12/18/24)
-- Private key and extended private key strings (`xprv`-like)
-- Wallet backup/restore screens and warning copy
+- crypto livestreams
+- wallet walkthrough videos
+- support calls with screen sharing
+- internal demos where sensitive recovery material may appear
+
+Typical high-risk content includes:
+
+- mnemonic recovery phrases (12/18/24 words)
+- grouped recovery word layouts
+- private key and extended private key patterns (`xprv`-like)
+- wallet backup/restore warning screens
 
 ## Product Honesty
 
 StreamShield reduces accidental leak risk. It does **not** guarantee perfect protection.
 
-Residual risk still exists from:
+Residual risk can still come from:
 
 - OCR latency
 - capture latency
-- overlay latency
-- OBS scene-switch latency
-- human mistakes and workflow errors
+- render/overlay latency
+- OBS switching latency
+- workflow/operator mistakes
 
-Use stream delay + a safe OBS scene + strong operational security.
+Treat StreamShield as defense-in-depth, not as permission to expose real secrets.
 
-## Privacy Guarantees
+## Core Privacy Guarantees
 
 - Local-first architecture
 - No telemetry
@@ -41,14 +57,19 @@ Use stream delay + a safe OBS scene + strong operational security.
 
 ## Threat Model (MVP)
 
-StreamShield is focused on accidental exposure during active presentation workflows:
+StreamShield targets accidental on-screen disclosure during active presentation workflows.
 
-- crypto livestreaming
-- screen sharing support calls
-- wallet walkthrough videos
-- internal product demos
+In scope:
 
-This is **not** surveillance software and not a cloud monitoring tool.
+- accidental visibility of recovery material during streaming/demo activity
+- reaction speed for likely high-risk wallet text patterns
+- local automated fallback actions (redact/panic/OBS)
+
+Out of scope:
+
+- malware on the host machine
+- deliberate exfiltration by a malicious operator
+- forensic-grade endpoint monitoring or surveillance
 
 ## Architecture Overview
 
@@ -65,115 +86,87 @@ flowchart LR
     H --> I["Typed Local Config"]
 ```
 
-## Workspace Layout
+## Detection Strategy
 
-```text
-StreamShield/
-  Cargo.toml
-  LICENSE
-  README.md
-  crates/
-    core-types/     # core traits, findings, actions, config
-    core-capture/   # Windows primary-display capture (local)
-    core-ocr/       # offline Tesseract OCR backend + grouping
-    core-detect/    # confidence-based detection heuristics
-    core-policy/    # escalation policy engine
-    core-redact/    # overlay target mapping + renderer skeleton
-    core-obs/       # OBS controller + mockable transport
-    core-runtime/   # scan orchestration pipeline (capture->ocr->detect->policy->actions)
-  apps/
-    desktop/
-      src-tauri/    # Tauri shell + local config commands
-      ui/           # calm local UI shell
-```
+The detector combines multiple signals instead of relying on keywords alone.
 
-## Core Abstractions
+### 1) Mnemonic phrase signals
 
-Implemented shared abstractions include:
+- 12/18/24-token candidate windows
+- overlap against full BIP39 English wordlist
+- grouped row/column layout hints
+- numbered-list style hints
+- contextual wallet warning text boosts
 
-- `FrameSource`
-- `CapturedFrame`
-- `OcrEngine`
-- `OcrTextBlock`
-- `Detector`
-- `DetectionFinding`
-- `FindingType`
-- `ConfidenceLevel`
-- `PolicyEngine`
-- `ResponseAction`
-- `RedactionTarget`
-- `RedactionStyle`
-- `RedactionRenderer`
-- `PanicController`
-- `ObsController`
-- `AppConfig`
+### 2) Private key signals
 
-## Detection Strategy (MVP)
+- `xprv`-like prefix + length patterns
+- long base58-like or hex-like secret strings
+- nearby context label boosts (`private key`, `seed phrase`, etc.)
 
-The detector combines multiple signals instead of keyword-only matching.
+### 3) Unknown high-risk text signals
 
-1. Mnemonic phrase signals
-- 12/18/24-word candidate patterns
-- overlap with full BIP39 English wordlist
-- grouped word layout signal
-- numbered list signal
-- contextual wallet warning signal
-
-2. Private key signals
-- `xprv`-like prefix + length pattern
-- long secret-like encoded strings
-- context-sensitive boosts
-
-3. Context signals
-- phrases like `seed phrase`, `recovery phrase`, `write this down`, `restore wallet`, `private key`
-
-## Runtime Orchestration
-
-`core-runtime` executes one scan cycle end-to-end:
-
-- capture primary display frame
-- run offline OCR
-- detect findings with confidence
-- evaluate policy decisions
-- apply redaction / panic shield / OBS actions
-
-It also supports panic-latch clearing for manual recovery flows.
-The desktop service also supports a configurable panic hotkey trigger.
+- long encoded-looking payloads
+- high character diversity checks
+- contextual proximity scoring
 
 ## Policy and Escalation
 
-Modes:
+StreamShield converts detection scores into actions through configurable thresholds.
 
-- `Balanced`: stronger evidence required
-- `Strict`: lower thresholds for faster reaction
-- `Paranoid`: aggressive thresholds
+Default thresholds:
 
-Default response pattern:
+- warning: `45`
+- redact: `72`
+- panic: `92`
 
-- Low: no-op or warning
-- Medium: warning
-- High: region redaction + optional OBS switch
-- Critical: panic shield + OBS switch
+Mode behavior:
+
+- `Balanced`: no threshold adjustment
+- `Strict`: lowers thresholds (`-5`, `-6`, `-8`)
+- `Paranoid`: lowers thresholds more aggressively (`-10`, `-12`, `-14`)
+
+Typical action pattern:
+
+- low score: no-op or warning
+- medium score: warning
+- high score: region redaction + optional OBS safe scene
+- critical score: panic shield + OBS safe scene
+
+## Runtime Behavior
+
+A scan cycle executes as:
+
+1. Capture primary display frame.
+2. Run local OCR.
+3. Detect findings with confidence scoring.
+4. Evaluate policy decisions.
+5. Apply actions (redaction / panic / OBS).
+
+Additional runtime safeguards:
+
+- panic latch can be cleared manually
+- configurable panic hotkey trigger
+- OBS lock mode can re-assert safe scene periodically while locked
 
 ## OBS Integration
 
-- Uses `ObsController` abstraction in `core-obs`
-- Includes real OBS WebSocket transport plus stub/mock transports
-- Configured with host, port, password, safe scene
-- Includes connection test command in desktop shell
-- Includes mock-based tests for connection/retry/failure flows
+- Uses `ObsController` abstraction (`core-obs`)
+- Supports real OBS WebSocket transport + stub/mock transports
+- Configurable host, port, safe scene, lock semantics
+- Connection test command available from desktop shell
+- Retry/failure paths covered with mock-based tests
 
-## Desktop UI (Tauri Shell)
+## Desktop Shell (Tauri)
 
-Calm, security-focused shell panels:
+Main panels:
 
 1. Protection Dashboard
-- protection state
-- mode
-- scan interval
-- OCR backend status
+- loop status
+- mode + scan interval
+- OCR readiness
 - OBS status
-- recent event summary (without secrets)
+- recent high-level events (no raw secrets)
 
 2. Detection Settings
 - mode
@@ -181,140 +174,165 @@ Calm, security-focused shell panels:
 - redaction style
 
 3. Panic Controls
-- panic hotkey
+- hotkey configuration
 - panic behavior
-- trigger/clear panic controls
+- manual trigger / clear controls
 
 4. OBS Settings
-- host
-- port
-- safe scene
+- enable/disable integration
+- host/port/safe scene
+- password update or clear
+- lock-safe-scene behavior
 - connection test
 
-5. Privacy and Limitations
+5. Privacy and Limits
 - local-only guarantees
-- explicit no-perfect-protection warning
+- explicit warning against over-trust
 
-## Configuration
+## Configuration and Secret Storage
 
-Config is local-only and typed (`AppConfig`). Desktop shell stores config under the local OS config directory:
+Config is typed (`AppConfig`) and stored locally.
 
-- Windows expected path pattern: `%APPDATA%/StreamShield/config.json`
-
-No cloud sync and no remote account model.
+- Windows path pattern: `%APPDATA%/StreamShield/config.json`
 
 OBS password handling:
 
-- OBS password is not persisted as plain text in `config.json`.
-- Desktop shell stores OBS password through OS secure credential storage (`keyring` integration).
+- OBS password is **not** persisted in plain `config.json`
+- Password is stored through OS credential storage (`keyring`)
+- Clearing password removes stored credential to avoid stale secret reuse
 
 ## Logging and Diagnostics
 
-By default:
+By default, StreamShield should log only high-level events.
 
-- no raw OCR text logging
-- no raw seed/private key logging
-- no screenshot persistence
+Should not log:
 
-Only high-level event logging should be used (for example: `region redacted`, `panic triggered`, `OBS safe scene switched`).
+- raw OCR text
+- seed phrases
+- private keys
+- screenshots/raw frames (unless explicitly enabled for unsafe debug workflows)
 
-## Install and Development
+Examples of acceptable events:
 
-Prerequisites:
+- `region redacted`
+- `panic triggered`
+- `OBS safe scene switched`
+
+## Installation and Development
+
+### Prerequisites
 
 - Rust stable toolchain
 - Cargo
-- Tauri prerequisites for Windows (WebView2 runtime/dev dependencies)
+- Tauri v2 prerequisites for Windows (including WebView2 runtime/dev dependencies)
+- Local Tesseract OCR installation (`tesseract.exe` + `tessdata`, at least `eng`)
 
-Local development:
+### Local development
 
 ```bash
 cargo test
 cargo test -p core-detect
 ```
 
-Desktop shell (Tauri):
+Run desktop shell:
 
 ```bash
 cd apps/desktop/src-tauri
 cargo tauri dev
 ```
 
-## OCR Backend Notes (Offline)
+## Workspace Layout
 
-`core-ocr` now integrates with local Tesseract via `leptess` and parses TSV output into structured `OcrTextBlock` bounding boxes.
+```text
+StreamShield/
+  Cargo.toml
+  README.md
+  crates/
+    core-types/     # shared traits, types, config
+    core-capture/   # primary-display capture
+    core-ocr/       # offline Tesseract OCR backend
+    core-detect/    # wallet-secret detection heuristics
+    core-policy/    # escalation decision engine
+    core-redact/    # redaction mapping/renderer primitives
+    core-obs/       # OBS controller + transports
+    core-runtime/   # end-to-end scan pipeline runtime
+  apps/
+    desktop/
+      src-tauri/    # native app shell + commands
+      ui/           # HTML/CSS/JS shell UI
+```
 
-Windows setup notes:
-
-- Install Tesseract OCR locally (offline).
-- Ensure `tesseract.exe` and required runtime libraries are available on PATH (or in a known location).
-- Ensure `tessdata` language files exist (at least `eng`).
-- StreamShield does not upload OCR data; frames are processed on-device.
-
-Implementation note:
-
-- On Windows, in-memory OCR input uses TIFF encoding to stay local and avoid screenshot file persistence by default.
 ## Testing Strategy
 
-Current tests include:
+Current test coverage includes:
 
 1. Unit tests
-- mnemonic candidate heuristics
-- private-key-like pattern detection
-- confidence scoring and policy escalation
-- redaction target mapping
+- mnemonic/private-key heuristics
+- confidence mapping and policy escalation
+- redaction mapping and runtime action behavior
 
 2. Fixture/regression tests
 - OCR grouping behavior
-- synthetic grouped 12/24-word phrases
+- grouped 12/24-word synthetic phrase patterns
 - contextual wallet warning text
-- false-positive checks for normal technical content
+- false-positive checks on normal technical text
 
 3. OBS tests
-- mock connection success
-- scene switch invocation
+- connection success/failure cases
 - retry behavior
-- auth failure handling
+- scene switch invocation
 
-All examples and fixtures are synthetic and invalid; no real wallet secrets are included.
+All fixtures are synthetic and invalid. No real wallet secrets are included.
 
 ## Operational Safety Guidance
 
-- Never reveal real seeds on internet-connected streaming machines when avoidable.
-- Prefer dummy wallets for public demos.
-- Use stream delay.
-- Configure and test a safe OBS scene.
-- Separate streaming and wallet machines when practical.
-- Treat StreamShield as a safety net, not a license for careless secret handling.
+- Prefer dummy wallets for public streams and demos.
+- Use stream delay when handling wallet UI.
+- Configure and test an OBS safe scene before going live.
+- Keep wallet operations on a separate machine when possible.
+- Assume any internet-connected stream machine can fail unexpectedly.
 
-## Known Limitations (Blunt)
+## Known Limitations
 
-- MVP scans only the primary display.
-- OCR quality depends on font size, contrast, motion blur, and capture timing.
-- Some leaks may occur between scan cycles and reaction actions.
-- No QR decoding in MVP.
+- MVP currently scans only the primary display.
+- OCR quality depends on font size, contrast, blur, and motion.
+- Leaks may occur between scan intervals and reaction time.
+- No QR-code decoding in MVP.
 - No wallet-specific CV model in MVP.
-- No multi-monitor support in MVP.
-- The desktop shell is functional but still not a production-hardened UX or installer experience.
-- Global hotkey uses polling-based keyboard detection in MVP; an OS-native registration path is planned.
+- No multi-monitor capture in MVP.
+- Global hotkey currently uses polling-based detection (OS-native registration is planned).
+- Desktop shell is functional but not yet fully product-hardened.
 
 ## Roadmap
 
-- Multi-monitor capture support
-- Pluggable OCR backends with stronger offline accuracy
-- Better coordinate calibration and DPI handling
-- Panic hotkey registration and global shortcut capture
-- Optional advanced detection models (still local-only)
-- Expanded OBS state synchronization and fail-safe behavior
-- Signed release builds and installer pipeline
+- Multi-monitor capture and stronger coordinate calibration
+- Pluggable OCR backends with better offline accuracy
+- Improved global shortcut and panic ergonomics
+- Expanded OBS fail-safe synchronization
+- Optional advanced local-only detection models
+- Signed releases and installer pipeline hardening
 
 ## Contributing
 
-Contributions are welcome. Please prioritize:
+Contributions are welcome.
+
+Please prioritize:
 
 - honest security claims
 - privacy-first defaults
 - safe logging and synthetic fixtures only
-- modular, testable architecture
+- modular and testable architecture
 
+Issue and PR flow:
 
+- Use GitHub issue templates in `.github/ISSUE_TEMPLATE`
+- Use the PR checklist in `.github/pull_request_template.md`
+- Use labels from `.github/labels.yml` for triage consistency
+
+## Security Reporting
+
+For sensitive vulnerabilities, use private disclosure via GitHub Security Advisories:
+
+- https://github.com/Krypera/StreamShield/security/advisories/new
+
+Do not post exploitable vulnerability details publicly in regular issues.
