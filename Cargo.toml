@@ -8,6 +8,7 @@ members = [
   "crates/core-policy",
   "crates/core-redact",
   "crates/core-obs",
+  "crates/core-runtime",
   "apps/desktop/src-tauri"
 ]
 

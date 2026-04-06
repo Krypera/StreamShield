@@ -13,6 +13,12 @@ tauri = { version = "2", features = [] }
 dirs = "6"
 core-types = { path = "../../../crates/core-types" }
 core-obs = { path = "../../../crates/core-obs" }
+core-capture = { path = "../../../crates/core-capture" }
+core-ocr = { path = "../../../crates/core-ocr" }
+core-detect = { path = "../../../crates/core-detect" }
+core-policy = { path = "../../../crates/core-policy" }
+core-redact = { path = "../../../crates/core-redact" }
+core-runtime = { path = "../../../crates/core-runtime" }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

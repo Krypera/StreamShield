@@ -87,6 +87,12 @@
         <section>
           <h2>Protection Dashboard</h2>
           <div id="dashboard" class="status"></div>
+          <button class="primary" onclick="startProtectionLoop()">Start Protection Loop</button>
+          <button onclick="stopProtectionLoop()">Stop Protection Loop</button>
+          <label>
+            <input id="protectionEnabled" type="checkbox" checked onchange="setProtectionEnabled()" />
+            Protection Enabled
+          </label>
           <div>
             <label>Mode</label>
             <select id="mode">
@@ -164,17 +170,39 @@
 
         document.getElementById("scanInterval").value = snapshot.scan_interval_ms;
         document.getElementById("mode").value = snapshot.mode;
+        document.getElementById("protectionEnabled").checked = snapshot.protection_enabled;
 
+        const rt = snapshot.protection_runtime;
         const container = document.getElementById("dashboard");
         container.innerHTML = `
           <div><span class="pill">Protection: ${snapshot.protection_enabled ? "Enabled" : "Disabled"}</span></div>
+          <div><span class="pill">Loop: ${rt.running ? "Running" : "Stopped"}</span></div>
           <div><span class="pill">Mode: ${snapshot.mode}</span></div>
           <div><span class="pill">OCR: ${snapshot.ocr_backend_status}</span></div>
           <div><span class="pill">OBS: ${snapshot.obs_status}</span></div>
           <div><span class="pill">Panic: ${snapshot.panic_active ? "Active" : "Idle"}</span></div>
+          <div><span class="pill">Last confidence: ${rt.last_confidence}</span></div>
+          <div><span class="pill">Last findings: ${rt.last_findings_count}</span></div>
+          <div><span class="pill">Redaction targets: ${rt.last_redaction_targets}</span></div>
+          ${rt.last_error ? `<div class="warning">Runtime error: ${rt.last_error}</div>` : ""}
           <div>Recent events:</div>
           <ul>${snapshot.recent_events.map((e) => `<li>${e}</li>`).join("")}</ul>
         `;
+      }
+
+      async function startProtectionLoop() {
+        await call("start_protection_loop");
+        refreshDashboard();
+      }
+
+      async function stopProtectionLoop() {
+        await call("stop_protection_loop");
+        refreshDashboard();
+      }
+
+      async function setProtectionEnabled() {
+        await call("set_protection_enabled", { enabled: document.getElementById("protectionEnabled").checked });
+        refreshDashboard();
       }
 
       async function saveMode() {
@@ -183,7 +211,7 @@
       }
 
       async function saveScanInterval() {
-        await call("update_scan_interval", { intervalMs: Number(document.getElementById("scanInterval").value) });
+        await call("update_scan_interval", { interval_ms: Number(document.getElementById("scanInterval").value) });
         refreshDashboard();
       }
 
@@ -201,8 +229,8 @@
           host: document.getElementById("obsHost").value,
           port: Number(document.getElementById("obsPort").value),
           password: null,
-          safeScene: document.getElementById("obsScene").value,
-          lockSafeSceneUntilClear: true,
+          safe_scene: document.getElementById("obsScene").value,
+          lock_safe_scene_until_clear: true,
         });
       }
 
@@ -223,7 +251,8 @@
       }
 
       refreshDashboard();
-      setInterval(refreshDashboard, 2500);
+      setInterval(refreshDashboard, 2000);
     </script>
   </body>
 </html>
+
