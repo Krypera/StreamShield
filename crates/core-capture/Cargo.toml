@@ -9,3 +9,4 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+core-types = { path = "../core-types" }
