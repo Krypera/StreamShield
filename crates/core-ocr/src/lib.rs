@@ -2,7 +2,7 @@ use std::{io::Cursor, sync::Mutex};
 
 use anyhow::{Context, Result};
 use core_types::{BoundingBox, CapturedFrame, OcrEngine, OcrTextBlock};
-use image::{DynamicImage, ImageBuffer, ImageFormat, Rgba};
+use image::{ColorType, ImageFormat};
 use leptess::LepTess;
 
 pub struct LocalOcrEngine {
@@ -22,17 +22,16 @@ impl LocalOcrEngine {
     }
 
     fn frame_to_tiff_bytes(frame: &CapturedFrame) -> Result<Vec<u8>> {
-        let image = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(
+        let mut bytes = Cursor::new(Vec::new());
+        image::write_buffer_with_format(
+            &mut bytes,
+            &frame.rgba,
             frame.width,
             frame.height,
-            frame.rgba.clone(),
+            ColorType::Rgba8,
+            ImageFormat::Tiff,
         )
-        .context("invalid frame buffer shape for RGBA image")?;
-
-        let mut bytes = Cursor::new(Vec::new());
-        DynamicImage::ImageRgba8(image)
-            .write_to(&mut bytes, ImageFormat::Tiff)
-            .context("failed to encode frame as in-memory TIFF")?;
+        .context("failed to encode frame as in-memory TIFF")?;
 
         Ok(bytes.into_inner())
     }
@@ -40,7 +39,6 @@ impl LocalOcrEngine {
 
 impl Default for LocalOcrEngine {
     fn default() -> Self {
-        // Fallback to common local tessdata path on Windows/Linux setups.
         Self::new_tesseract(None, "eng").expect("local tesseract engine initialization failed")
     }
 }
@@ -52,12 +50,17 @@ impl OcrEngine for LocalOcrEngine {
 
     fn extract_text(&self, frame: &CapturedFrame) -> Result<Vec<OcrTextBlock>> {
         let bytes = Self::frame_to_tiff_bytes(frame)?;
-        let mut lt = self.inner.lock().map_err(|_| anyhow::anyhow!("ocr mutex poisoned"))?;
+        let mut lt = self
+            .inner
+            .lock()
+            .map_err(|_| anyhow::anyhow!("ocr mutex poisoned"))?;
 
         lt.set_image_from_mem(&bytes)
             .context("tesseract set_image_from_mem failed")?;
 
-        let tsv = lt.get_tsv_text(0).context("failed to read tesseract TSV output")?;
+        let tsv = lt
+            .get_tsv_text(0)
+            .context("failed to read tesseract TSV output")?;
         Ok(parse_tesseract_tsv(&tsv))
     }
 }
@@ -75,7 +78,6 @@ fn parse_tesseract_tsv(tsv: &str) -> Vec<OcrTextBlock> {
             continue;
         }
 
-        // tesseract TSV: ... left top width height conf text
         let left = cols[6].parse::<f32>().ok();
         let top = cols[7].parse::<f32>().ok();
         let width = cols[8].parse::<f32>().ok();
@@ -109,7 +111,12 @@ fn parse_tesseract_tsv(tsv: &str) -> Vec<OcrTextBlock> {
 
 pub fn group_nearby_blocks(blocks: &[OcrTextBlock], y_tolerance: f32) -> Vec<Vec<OcrTextBlock>> {
     let mut sorted = blocks.to_vec();
-    sorted.sort_by(|a, b| a.bbox.y.partial_cmp(&b.bbox.y).unwrap_or(std::cmp::Ordering::Equal));
+    sorted.sort_by(|a, b| {
+        a.bbox
+            .y
+            .partial_cmp(&b.bbox.y)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let mut groups: Vec<Vec<OcrTextBlock>> = Vec::new();
     for block in sorted {
@@ -124,7 +131,12 @@ pub fn group_nearby_blocks(blocks: &[OcrTextBlock], y_tolerance: f32) -> Vec<Vec
     }
 
     for group in &mut groups {
-        group.sort_by(|a, b| a.bbox.x.partial_cmp(&b.bbox.x).unwrap_or(std::cmp::Ordering::Equal));
+        group.sort_by(|a, b| {
+            a.bbox
+                .x
+                .partial_cmp(&b.bbox.x)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 
     groups

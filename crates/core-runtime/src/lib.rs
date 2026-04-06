@@ -33,6 +33,7 @@ where
     obs: Obs,
     panic_latched: bool,
     obs_locked: bool,
+    obs_safe_scene_active: bool,
 }
 
 impl<F, O, D, P, R, Obs> PipelineRuntime<F, O, D, P, R, Obs>
@@ -61,6 +62,7 @@ where
             obs,
             panic_latched: false,
             obs_locked: false,
+            obs_safe_scene_active: false,
         }
     }
 
@@ -75,6 +77,7 @@ where
     pub fn clear_alert_latch(&mut self) -> Result<()> {
         self.panic_latched = false;
         self.obs_locked = false;
+        self.obs_safe_scene_active = false;
         self.renderer.set_fullscreen_shield(false)?;
         self.renderer.set_targets(Vec::new())?;
         Ok(())
@@ -89,7 +92,7 @@ where
             }
             PanicBehavior::ObsOnly => {
                 if config.obs.enabled {
-                    self.obs.switch_to_safe_scene(&config.obs)?;
+                    self.ensure_obs_safe_scene(config)?;
                     if config.obs.lock_safe_scene_until_clear {
                         self.obs_locked = true;
                     }
@@ -98,7 +101,7 @@ where
             PanicBehavior::ShieldAndObs => {
                 self.renderer.set_fullscreen_shield(true)?;
                 if config.obs.enabled {
-                    self.obs.switch_to_safe_scene(&config.obs)?;
+                    self.ensure_obs_safe_scene(config)?;
                     if config.obs.lock_safe_scene_until_clear {
                         self.obs_locked = true;
                     }
@@ -156,17 +159,15 @@ where
                 }
                 ResponseAction::SwitchObsSafeScene => {
                     obs_switch_requested = true;
-                    self.obs.switch_to_safe_scene(&config.obs)?;
+                    self.ensure_obs_safe_scene(config)?;
                     if config.obs.lock_safe_scene_until_clear {
                         self.obs_locked = true;
                     }
                 }
             }
         }
-
-        if self.obs_locked && config.obs.enabled {
-            obs_switch_requested = true;
-            self.obs.switch_to_safe_scene(&config.obs)?;
+        if !self.obs_locked && !obs_switch_requested {
+            self.obs_safe_scene_active = false;
         }
 
         if !redaction_applied {
@@ -187,6 +188,15 @@ where
             obs_locked: self.obs_locked,
             rationale: decision.rationale,
         })
+    }
+
+    fn ensure_obs_safe_scene(&mut self, config: &AppConfig) -> Result<()> {
+        if self.obs_safe_scene_active {
+            return Ok(());
+        }
+        self.obs.switch_to_safe_scene(&config.obs)?;
+        self.obs_safe_scene_active = true;
+        Ok(())
     }
 }
 

@@ -1,7 +1,19 @@
+use std::collections::HashSet;
+
+use bip39::Language;
 use core_types::{
     BoundingBox, ConfidenceLevel, DetectionContext, DetectionFinding, Detector, FindingType,
     OcrTextBlock,
 };
+use once_cell::sync::Lazy;
+
+static BIP39_ENGLISH_WORDS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
+    Language::English
+        .word_list()
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>()
+});
 
 const CONTEXT_KEYWORDS: &[&str] = &[
     "seed phrase",
@@ -16,19 +28,6 @@ const CONTEXT_KEYWORDS: &[&str] = &[
     "wallet backup",
     "recovery words",
     "show this phrase",
-];
-
-// Synthetic subset for tests and heuristics. Not a full BIP39 list.
-const SYNTHETIC_BIP39_STYLE_WORDS: &[&str] = &[
-    "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract", "access",
-    "accident", "account", "accuse", "achieve", "acoustic", "acquire", "across", "act", "action",
-    "actor", "adapt", "add", "address", "adjust", "admit", "adult", "advance", "advice", "aerobic",
-    "affair", "afford", "afraid", "again", "age", "agent", "agree", "ahead", "aim", "air", "airport",
-    "aisle", "alarm", "album", "alert", "alien", "all", "allow", "almost", "alone", "alpha", "already",
-    "also", "alter", "always", "amateur", "amazing", "among", "amount", "amused", "analyst", "anchor",
-    "ancient", "anger", "angle", "angry", "animal", "ankle", "announce", "annual", "another", "answer",
-    "antenna", "antique", "anxiety", "any", "apart", "apology", "appear", "apple", "approve", "april",
-    "arch", "arctic", "area", "arena", "argue", "arm", "armed", "armor", "army", "around", "arrange",
 ];
 
 #[derive(Debug, Default)]
@@ -68,7 +67,7 @@ fn is_alpha_token(token: &str) -> bool {
 }
 
 fn is_bip39_style_word(token: &str) -> bool {
-    token.len() >= 3 && is_alpha_token(token) && SYNTHETIC_BIP39_STYLE_WORDS.contains(&token)
+    token.len() >= 3 && is_alpha_token(token) && BIP39_ENGLISH_WORDS.contains(token)
 }
 
 fn context_hits(blocks: &[OcrTextBlock]) -> usize {
@@ -325,7 +324,7 @@ fn charset_diversity_ratio(s: &str) -> f32 {
     if s.is_empty() {
         return 0.0;
     }
-    let unique = s.chars().collect::<std::collections::HashSet<_>>().len() as f32;
+    let unique = s.chars().collect::<HashSet<_>>().len() as f32;
     unique / s.len() as f32
 }
 
@@ -399,6 +398,22 @@ mod tests {
 
         let findings = WalletSecretDetector.detect(&blocks, &ctx());
         assert!(findings.iter().any(|f| f.score >= 70));
+    }
+
+    #[test]
+    fn detects_real_bip39_english_words() {
+        let words = vec![
+            "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract", "access",
+            "accident", "account", "accuse",
+        ];
+        let blocks = words
+            .iter()
+            .enumerate()
+            .map(|(i, w)| block(w, (i as f32) * 40.0, 12.0))
+            .collect::<Vec<_>>();
+
+        let findings = WalletSecretDetector.detect(&blocks, &ctx());
+        assert!(findings.iter().any(|f| f.score >= 65));
     }
 
     #[test]
