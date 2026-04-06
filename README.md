@@ -219,6 +219,20 @@ cd apps/desktop/src-tauri
 cargo tauri dev
 ```
 
+## OCR Backend Notes (Offline)
+
+`core-ocr` now integrates with local Tesseract via `leptess` and parses TSV output into structured `OcrTextBlock` bounding boxes.
+
+Windows setup notes:
+
+- Install Tesseract OCR locally (offline).
+- Ensure `tesseract.exe` and required runtime libraries are available on PATH (or in a known location).
+- Ensure `tessdata` language files exist (at least `eng`).
+- StreamShield does not upload OCR data; frames are processed on-device.
+
+Implementation note:
+
+- On Windows, in-memory OCR input uses TIFF encoding to stay local and avoid screenshot file persistence by default.
 ## Testing Strategy
 
 Current tests include:
