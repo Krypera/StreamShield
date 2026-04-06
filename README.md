@@ -80,6 +80,7 @@ StreamShield/
     core-policy/    # escalation policy engine
     core-redact/    # overlay target mapping + renderer skeleton
     core-obs/       # OBS controller + mockable transport
+    core-runtime/   # scan orchestration pipeline (capture->ocr->detect->policy->actions)
   apps/
     desktop/
       src-tauri/    # Tauri shell + local config commands
@@ -125,6 +126,18 @@ The detector combines multiple signals instead of keyword-only matching.
 
 3. Context signals
 - phrases like `seed phrase`, `recovery phrase`, `write this down`, `restore wallet`, `private key`
+
+## Runtime Orchestration
+
+`core-runtime` executes one scan cycle end-to-end:
+
+- capture primary display frame
+- run offline OCR
+- detect findings with confidence
+- evaluate policy decisions
+- apply redaction / panic shield / OBS actions
+
+It also supports panic-latch clearing for manual recovery flows.
 
 ## Policy and Escalation
 
@@ -294,3 +307,5 @@ Contributions are welcome. Please prioritize:
 - privacy-first defaults
 - safe logging and synthetic fixtures only
 - modular, testable architecture
+
+

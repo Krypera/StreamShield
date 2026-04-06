@@ -54,7 +54,11 @@ impl PolicyEngine for DefaultPolicyEngine {
 
         if max_score >= panic {
             actions.push(ResponseAction::TriggerPanicShield);
-            if config.obs.enabled {
+            if config.obs.enabled
+                && !actions
+                    .iter()
+                    .any(|a| matches!(a, ResponseAction::SwitchObsSafeScene))
+            {
                 actions.push(ResponseAction::SwitchObsSafeScene);
             }
         }
@@ -158,5 +162,19 @@ mod tests {
             .actions
             .iter()
             .any(|a| matches!(a, ResponseAction::RedactRegion { .. })));
+    }
+
+    #[test]
+    fn does_not_duplicate_obs_switch_action() {
+        let mut config = AppConfig::default();
+        config.obs.enabled = true;
+        let decision =
+            DefaultPolicyEngine.decide(&[finding(98, ConfidenceLevel::Critical)], &config);
+        let obs_actions = decision
+            .actions
+            .iter()
+            .filter(|a| matches!(a, ResponseAction::SwitchObsSafeScene))
+            .count();
+        assert_eq!(obs_actions, 1);
     }
 }
