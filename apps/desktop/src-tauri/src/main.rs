@@ -3,9 +3,12 @@
 mod config;
 mod protection;
 
-use std::{path::PathBuf, sync::{Arc, Mutex}};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
-use core_obs::{LocalObsController, StubTransport};
+use core_obs::{LocalObsController, WebSocketObsTransport};
 use core_types::{AppConfig, ObsController, PanicBehavior, ProtectionMode, RedactionStyle};
 use protection::{ProtectionService, ProtectionStatusSnapshot};
 use serde::Serialize;
@@ -24,6 +27,7 @@ struct DashboardSnapshot {
     protection_enabled: bool,
     mode: String,
     scan_interval_ms: u64,
+    panic_hotkey: String,
     ocr_backend_status: String,
     obs_status: String,
     panic_active: bool,
@@ -57,6 +61,7 @@ fn get_dashboard_snapshot(state: State<'_, AppState>) -> Result<DashboardSnapsho
         protection_enabled: cfg.protection_enabled,
         mode: format!("{:?}", cfg.mode),
         scan_interval_ms: cfg.scan_interval_ms,
+        panic_hotkey: cfg.panic_hotkey,
         ocr_backend_status: if runtime.ocr_ready {
             "Local OCR backend available".to_string()
         } else {
@@ -126,6 +131,16 @@ fn update_scan_interval(state: State<'_, AppState>, interval_ms: u64) -> Result<
 }
 
 #[tauri::command]
+fn update_panic_hotkey(state: State<'_, AppState>, hotkey: String) -> Result<(), String> {
+    if !hotkey.contains('+') {
+        return Err("panic hotkey should include at least one modifier (example: Ctrl+Shift+Pause)".to_string());
+    }
+    let mut cfg = state.config.lock().map_err(|_| "config lock failed")?;
+    cfg.panic_hotkey = hotkey;
+    config::save(&state.config_path, &cfg).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn update_redaction_style(state: State<'_, AppState>, style: String) -> Result<(), String> {
     let mut cfg = state.config.lock().map_err(|_| "config lock failed")?;
     cfg.redaction_style = match style.as_str() {
@@ -172,7 +187,11 @@ fn update_obs_settings(
 #[tauri::command]
 fn test_obs_connection(state: State<'_, AppState>) -> Result<String, String> {
     let cfg = state.config.lock().map_err(|_| "config lock failed")?.clone();
-    let mut obs = LocalObsController::new(StubTransport);
+
+    let mut obs = WebSocketObsTransport::new()
+        .map(LocalObsController::new)
+        .map_err(|e| format!("OBS transport initialization failed: {e}"))?;
+
     obs.test_connection(&cfg.obs)
         .map_err(|e| format!("OBS connection test failed: {e}"))?;
     append_event(&state, "OBS connection test succeeded");
@@ -185,6 +204,9 @@ fn trigger_panic(state: State<'_, AppState>) -> Result<(), String> {
         .panic_active
         .lock()
         .map_err(|_| "panic lock failed")? = true;
+    if let Ok(service) = state.protection.lock() {
+        service.request_manual_panic();
+    }
     append_event(&state, "Panic shield triggered manually");
     Ok(())
 }
@@ -244,6 +266,7 @@ fn main() {
             set_protection_enabled,
             update_mode,
             update_scan_interval,
+            update_panic_hotkey,
             update_redaction_style,
             update_panic_behavior,
             update_obs_settings,

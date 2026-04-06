@@ -121,6 +121,10 @@
 
         <section>
           <h2>Panic Controls</h2>
+          <label>Panic Hotkey</label>
+          <input id="panicHotkey" value="Ctrl+Shift+Pause" />
+          <button onclick="savePanicHotkey()">Save Panic Hotkey</button>
+
           <label>Panic Behavior</label>
           <select id="panicBehavior">
             <option>ShieldAndObs</option>
@@ -171,6 +175,7 @@
         document.getElementById("scanInterval").value = snapshot.scan_interval_ms;
         document.getElementById("mode").value = snapshot.mode;
         document.getElementById("protectionEnabled").checked = snapshot.protection_enabled;
+        document.getElementById("panicHotkey").value = snapshot.panic_hotkey;
 
         const rt = snapshot.protection_runtime;
         const container = document.getElementById("dashboard");
@@ -181,6 +186,9 @@
           <div><span class="pill">OCR: ${snapshot.ocr_backend_status}</span></div>
           <div><span class="pill">OBS: ${snapshot.obs_status}</span></div>
           <div><span class="pill">Panic: ${snapshot.panic_active ? "Active" : "Idle"}</span></div>
+          <div><span class="pill">Panic latch: ${rt.panic_latched ? "Latched" : "Clear"}</span></div>
+          <div><span class="pill">OBS lock: ${rt.obs_locked ? "Locked" : "Unlocked"}</span></div>
+          <div><span class="pill">Hotkey triggers: ${rt.hotkey_triggers}</span></div>
           <div><span class="pill">Last confidence: ${rt.last_confidence}</span></div>
           <div><span class="pill">Last findings: ${rt.last_findings_count}</span></div>
           <div><span class="pill">Redaction targets: ${rt.last_redaction_targets}</span></div>
@@ -213,6 +221,10 @@
       async function saveScanInterval() {
         await call("update_scan_interval", { interval_ms: Number(document.getElementById("scanInterval").value) });
         refreshDashboard();
+      }
+
+      async function savePanicHotkey() {
+        await call("update_panic_hotkey", { hotkey: document.getElementById("panicHotkey").value });
       }
 
       async function saveRedactionStyle() {
@@ -255,4 +267,3 @@
     </script>
   </body>
 </html>
-

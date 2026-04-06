@@ -74,8 +74,8 @@ StreamShield/
   README.md
   crates/
     core-types/     # core traits, findings, actions, config
-    core-capture/   # Windows-first frame source skeleton
-    core-ocr/       # local OCR backend abstraction + grouping
+    core-capture/   # Windows primary-display capture (local)
+    core-ocr/       # offline Tesseract OCR backend + grouping
     core-detect/    # confidence-based detection heuristics
     core-policy/    # escalation policy engine
     core-redact/    # overlay target mapping + renderer skeleton
@@ -138,6 +138,7 @@ The detector combines multiple signals instead of keyword-only matching.
 - apply redaction / panic shield / OBS actions
 
 It also supports panic-latch clearing for manual recovery flows.
+The desktop service also supports a configurable panic hotkey trigger.
 
 ## Policy and Escalation
 
@@ -154,9 +155,10 @@ Default response pattern:
 - High: region redaction + optional OBS switch
 - Critical: panic shield + OBS switch
 
-## OBS Integration (MVP Skeleton)
+## OBS Integration
 
 - Uses `ObsController` abstraction in `core-obs`
+- Includes real OBS WebSocket transport plus stub/mock transports
 - Configured with host, port, password, safe scene
 - Includes connection test command in desktop shell
 - Includes mock-based tests for connection/retry/failure flows
@@ -179,6 +181,7 @@ Calm, security-focused shell panels:
 - redaction style
 
 3. Panic Controls
+- panic hotkey
 - panic behavior
 - trigger/clear panic controls
 
@@ -287,7 +290,7 @@ All examples and fixtures are synthetic and invalid; no real wallet secrets are 
 - No QR decoding in MVP.
 - No wallet-specific CV model in MVP.
 - No multi-monitor support in MVP.
-- Desktop shell currently provides MVP command surface and UI skeleton, not a full production UX flow.
+- The desktop shell is functional but still not a production-hardened UX or installer experience.
 
 ## Roadmap
 
