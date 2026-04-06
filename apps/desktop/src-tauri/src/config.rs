@@ -35,11 +35,13 @@ pub fn save(path: &PathBuf, config: &AppConfig) -> Result<()> {
     }
 
     let mut on_disk = config.clone();
-    if let Some(password) = &config.obs.password {
-        if password.trim().is_empty() {
-            clear_obs_password()?;
-        } else {
+    match &config.obs.password {
+        Some(password) if !password.trim().is_empty() => {
             store_obs_password(password)?;
+        }
+        _ => {
+            // Explicitly clear when password is None or empty to prevent stale secret resurrection.
+            clear_obs_password()?;
         }
     }
 
